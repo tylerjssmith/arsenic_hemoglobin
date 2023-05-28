@@ -9,7 +9,6 @@
 # Load Packages
 library(tidyverse)
 library(lubridate)
-library(mice)
 
 # Set Working Directory
 setwd("~/Johns Hopkins/PAIR Data - Documents/Data/Current/")
@@ -51,8 +50,7 @@ water_pe <- water_pe %>%
   select(
     UID, 
     PE_wMetals_As, 
-    PE_wMetals_Fe,
-    PE_wMetals_P
+    PE_wMetals_Fe
   )
 
 water_pe <- water_pe %>%
@@ -168,19 +166,26 @@ df <- df %>%
 # Indicate Singleton Live Birth
 df <- df %>%
   group_by(UID) %>%
-  mutate(SINGLETON = ifelse(LIVEBIRTH == 1 & n() == 1, 1, 0)) %>% 
+  mutate(
+    SINGLETON = 
+      ifelse(LIVEBIRTH == 1 & n() == 1, 1,
+      ifelse(LIVEBIRTH == 1 & n() != 1, 0,
+      ifelse(LIVEBIRTH != 1, NA, NA)))) %>%
   ungroup()
+    
+df %>%
+  group_by(LIVEBIRTH) %>%
+  count(SINGLETON)
 
-# Limit to 1 Row/Woman
+# Reduce to 1 Row/Pregnant Woman
 df <- df %>%
   group_by(UID) %>%
-  arrange(UID, desc(CHILDDOB)) %>%
+  arrange(UID, CHILDDOB) %>%
   slice_head() %>%
   ungroup()
 
-df %>% 
-  count(LIVEBIRTH, SINGLETON) %>%
-  mutate(pr = n / sum(n) * 100)
+df %>% head()
+df %>% nrow()
 
 ##### Prepare Hemoglobin #######################################################
 # Convert to Numeric
@@ -249,9 +254,10 @@ df <- df %>%
 
 df %>% count(is.na(SM3HEMO))
 
+rm(list = c("sefetabs_uid","smfetabs_uid"))
+
 ##### Prepare Drinking Water Elements ##########################################
-# (Use Visit 2 Values if Visit 1 Values Missing)
-# (Set Erroneous Iron Value to Missing)
+# (Use Visit 2 Values if Visit 1 Values Missing or Erroneous)
 df <- df %>%
   mutate(wAs = ifelse(is.na(PE_wMetals_As), VX_wMetals_As, PE_wMetals_As)) %>%
   mutate(wFe = ifelse(is.na(PE_wMetals_Fe), VX_wMetals_Fe, PE_wMetals_Fe)) %>%
@@ -264,19 +270,17 @@ df <- df %>%
   mutate(ln_wAs = log(wAs)) %>%
   mutate(ln_wFe = log(wFe))
 
-df <- df %>%
-  mutate(ln_wAs_IQR = ln_wAs / IQR(ln_wAs)) %>%
-  mutate(ln_wFe_IQR = ln_wFe / IQR(ln_wFe))
-
-##### Prepare Other Variables ##################################################
-# Age
+##### Age ######################################################################
+# Derive Age
 df <- df %>%
   mutate(AGE = year(SEDATE) - DOBYY)
 
+# Check Missingness
 df %>%
   count(is.na(AGE)) %>%
   mutate(pr = n / sum(n) * 100)
 
+# Check Range
 df %>%
   summarise(
     n = sum(!is.na(AGE)),
@@ -284,7 +288,9 @@ df %>%
     max = max(AGE, na.rm = TRUE)
   )
 
+# Plot Distribution
 df %>%
+  filter(!is.na(AGE)) %>%
   ggplot(aes(x = AGE)) +
   geom_density() +
   scale_x_continuous(breaks = seq(10,50,5), limits = c(10,45)) +
@@ -295,28 +301,35 @@ df %>%
     y = "Density") +
   theme_bw()
 
-# Gestational Age
+##### Gestational Age (Visits 1-2) #############################################
+# Derive Gestational Age
 df <- df %>%
   mutate(SEGSTAGE  = SEWKINT  - BGLMPWK) %>%
   mutate(SVXGSTAGE = SVXWKINT - BGLMPWK)
 
+# Check Range
+# (Visit 1)
 df %>%
   count(SEGSTAGE) %>%
   mutate(pr = n / sum(n))
 
+# (Visit 2)
 df %>%
   count(SVXGSTAGE) %>%
   mutate(pr = n / sum(n))
 
-# Days Postpartum
+##### Days Postpartum (Visits 3-4) #############################################
+# Derive Days Postpartum
 df <- df %>%
   mutate(SMDAYSPP  = SMDATE  - CHILDDOB) %>%
   mutate(SM3DAYSPP = SM3DATE - CHILDDOB)
 
+# Plot Distributions
 df %>%
   select(SMDAYSPP, SM3DAYSPP) %>%
   pivot_longer(cols = everything()) %>%
-  mutate(name = factor(name, levels = c("SMDAYSPP","SM3DAYSPP"), labels = c("Visit 3","Visit 4"))) %>%
+  mutate(name = factor(name, levels = c("SMDAYSPP","SM3DAYSPP"), 
+    labels = c("Visit 3","Visit 4"))) %>%
   ggplot(aes(x = value, y = fct_rev(name), group = name)) +
   geom_jitter(alpha = 0.4, height = 0.2) +
   scale_x_continuous(breaks = seq(0,180,30)) +
@@ -326,23 +339,28 @@ df %>%
     y = "Visit") +
   theme_bw()
 
-# Parity
+##### Parity ###################################################################
+# Categorize Parity
 df <- df %>%
   mutate(PARITY = ifelse(PARITY > 2, 2, PARITY))
 
+# Check Distribution
 df %>%
   count(PARITY) %>%
   mutate(pr = n / sum(n) * 100)
 
-# Education
+##### Education ################################################################
+# Categorize Education
 df <- df %>%
   mutate(EDUCATION = ifelse(EDUCATION > 2, 2, EDUCATION))
 
+# Check Distribution
 df %>%
   count(EDUCATION) %>%
   mutate(pr = n / sum(n) * 100)
 
-# Living Standards Index
+##### Living Standards Index ###################################################
+# Plot Distribution
 df %>%
   ggplot(aes(x = LSI)) +
   geom_density() +
@@ -353,7 +371,8 @@ df %>%
     y = "Density") +
   theme_bw()
 
-# Mid-upper Arm Circumference
+##### Mid-upper Arm Circumference ##############################################
+# Plot Distribution
 df %>%
   ggplot(aes(x = medSEMUAC)) +
   geom_density() +
@@ -364,15 +383,30 @@ df %>%
     y = "Density") +
   theme_bw()
 
-# Husband's Smoking
+# Plot MUAC by LSI
+df %>%
+  ggplot(aes(x = LSI, y = medSEMUAC)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth() +
+  scale_x_continuous(limits = c(-2,3)) +
+  scale_y_continuous(limits = c(10,40)) +
+  labs(
+    x = "Living Standards Index",
+    y = "Mid-upper Arm Circumference (cm)") +
+  theme_bw()
+
+##### Husband's Smoking ########################################################
+# Check Distribution
 df %>%
   count(PEHCIGAR) %>%
   mutate(pr = n / sum(n) * 100)
 
-# Plasma Ferritin
+##### Plasma Ferritin ##########################################################
+# Transform Plasma Ferritin
 df <- df %>%
   mutate(ln_SEFER = log(SEFER))
 
+# Plot Distribution
 df %>%
   ggplot(aes(x = ln_SEFER)) +
   geom_density() +
@@ -384,44 +418,24 @@ df %>%
     y = "Density") +
   theme_bw()
 
-##### Stratify by Visit; Check Missingness #####################################
-# Visit 1
-df <- df %>%
-  mutate(VISIT1 = ifelse(LIVEBIRTH == 1 & SINGLETON == 1 & SESTATUS == 1 & 
-      !is.na(SEHEMO) & !is.na(AGE), 1, 0))
-
-df %>% count(VISIT1)
-
-# Visit 2
-df <- df %>%
-  mutate(VISIT2 = ifelse(LIVEBIRTH == 1 & SINGLETON == 1 & SVXSTATUS == 1 & 
-      !is.na(SVXHEMO) & !is.na(AGE), 1, 0))
-
-df %>% count(VISIT2)
-
-# Visit 3
-df <- df %>%
-  mutate(VISIT3 = ifelse(LIVEBIRTH == 1 & SINGLETON == 1 & SMSTATUS == 1 & 
-      !is.na(SMHEMO) & !is.na(AGE), 1, 0))
-
-df %>% count(VISIT3)
-
-# Visit 4
-df <- df %>%
-  mutate(VISIT4 = ifelse(LIVEBIRTH == 1 & SINGLETON == 1 & SM3STATUS == 1 & 
-      !is.na(SM3HEMO) & !is.na(AGE), 1, 0))
-
-df %>% count(VISIT4)
-
 ##### Prepare Data Set #########################################################
 # Select Variables
 df <- df %>%
-  select(UID, ends_with("DATE"), ends_with("STATUS"), contains("wAs"), contains("wFe"), 
-    ends_with("HEMO"), ends_with("FETABS"), AGE, SEGSTAGE, SVXGSTAGE, SMDAYSPP, SM3DAYSPP, 
-    PARITY, EDUCATION, LSI, medSEMUAC, PEHCIGAR, SEFER, ln_SEFER, LIVEBIRTH, SINGLETON,
-    starts_with("VISIT"))
+  select(
+    # Identifiers and Selection
+    UID, LIVEBIRTH, SINGLETON,
+    
+    # Hemoglobin
+    ends_with("HEMO"), ends_with("FETABS"),
+    
+    # Drinking Water Elements
+    contains("wAs"), contains("wFe"),
+    
+    # Other Covariates
+    AGE, SEGSTAGE, SVXGSTAGE, SMDAYSPP, SM3DAYSPP, PARITY, EDUCATION, LSI, 
+    medSEMUAC, PEHCIGAR, SEFER, ln_SEFER
+  )
 
 df %>% head()
-
 
 

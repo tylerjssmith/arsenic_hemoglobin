@@ -10,6 +10,11 @@
 library(tidyverse)
 library(car)
 
+##### Scale Exposure Variables #################################################
+df <- df %>%
+  mutate(ln_wAs_IQR = ln_wAs / IQR(ln_wAs)) %>%
+  mutate(ln_wFe_IQR = ln_wFe / IQR(ln_wFe))
+
 ##### Visit 1 ##################################################################
 summary(model_v1_cru_as <- lm(SEHEMO ~ ln_wAs_IQR, 
   data = subset(df, VISIT1 == 1)))
