@@ -3,7 +3,7 @@
 # Drinking Water Arsenic and Hemoglobin -- Data
 
 # Tyler Smith
-# January 11, 2023
+# May 29, 2023
 
 ##### Preliminaries ############################################################
 # Load Packages
@@ -321,8 +321,8 @@ df %>%
 ##### Days Postpartum (Visits 3-4) #############################################
 # Derive Days Postpartum
 df <- df %>%
-  mutate(SMDAYSPP  = SMDATE  - CHILDDOB) %>%
-  mutate(SM3DAYSPP = SM3DATE - CHILDDOB)
+  mutate(SMDAYSPP  = as.numeric(SMDATE  - CHILDDOB)) %>%
+  mutate(SM3DAYSPP = as.numeric(SM3DATE - CHILDDOB))
 
 # Plot Distributions
 df %>%
@@ -344,6 +344,13 @@ df %>%
 df <- df %>%
   mutate(PARITY = ifelse(PARITY > 2, 2, PARITY))
 
+# Define Factors
+df <- df %>%
+  mutate(PARITY = factor(PARITY,
+    levels = c(0,1,2),
+    labels = c("Nulliparous","Primiparous","Multiparous")
+  ))
+
 # Check Distribution
 df %>%
   count(PARITY) %>%
@@ -353,6 +360,13 @@ df %>%
 # Categorize Education
 df <- df %>%
   mutate(EDUCATION = ifelse(EDUCATION > 2, 2, EDUCATION))
+
+# Define Factors
+df <- df %>%
+  mutate(EDUCATION = factor(EDUCATION,
+    levels = c(0,1,2),
+    labels = c("None","Class 1-9","Class ≥10")
+  ))
 
 # Check Distribution
 df %>%
@@ -401,6 +415,13 @@ df %>%
   count(PEHCIGAR) %>%
   mutate(pr = n / sum(n) * 100)
 
+# Define Factors
+df <- df %>%
+  mutate(PEHCIGAR = factor(PEHCIGAR,
+    levels = c(0,1),
+    labels = c("No","Yes")
+  ))
+
 ##### Plasma Ferritin ##########################################################
 # Transform Plasma Ferritin
 df <- df %>%
@@ -432,8 +453,8 @@ df <- df %>%
     contains("wAs"), contains("wFe"),
     
     # Other Covariates
-    AGE, SEGSTAGE, SVXGSTAGE, SMDAYSPP, SM3DAYSPP, PARITY, EDUCATION, LSI, 
-    medSEMUAC, PEHCIGAR, SEFER, ln_SEFER
+    AGE, SEGSTAGE, SVXGSTAGE, SMDAYSPP, SM3DAYSPP, PARITY, EDUCATION, 
+    LSI, medSEMUAC, PEHCIGAR, contains("SEFER")
   )
 
 df %>% head()
